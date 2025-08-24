@@ -12,7 +12,7 @@
 #define DRIVER_NAME "msg_board"
 #define DEVICE_NAME "msgboard"
 #define CLASS_NAME  "msgboard"
-#define BUFFER_SIZE 256
+
 
 static dev_t dev_num;
 static struct cdev mb_cdev;
@@ -85,6 +85,8 @@ static ssize_t mb_write(struct file *file, const char __user *buf, size_t len, l
 
 static long mb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+    size_t max = BUFFER_SIZE - 1;
+
     switch (cmd) {
         case MSGB_GET_OPEN_COUNT:
             if (copy_to_user((int __user *)arg, &open_count, sizeof(open_count)))
@@ -97,15 +99,24 @@ static long mb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             mutex_unlock(&board_lock);
             return 0;
 
-        case MSGB_SET_MESSAGE: {
-            size_t max = BUFFER_SIZE - 1;
-
-            if (copy_from_user(board, (void __user *)arg, max))
+        case MSGB_SET_MESSAGE:
+            mutex_lock(&board_lock);
+            if (copy_from_user(board, (void __user *)arg, max)) {
+                mutex_unlock(&board_lock);
                 return -EFAULT;
-
-            board[max] = '\0';
+            }
+            board[max] = '\0';  
+            mutex_unlock(&board_lock);
             return 0;
-        }
+
+        case MSGB_GET_MESSAGE:
+            mutex_lock(&board_lock);
+            if (copy_to_user((void __user *)arg, board, max)) {
+                mutex_unlock(&board_lock);
+                return -EFAULT;
+            }
+            mutex_unlock(&board_lock);
+            return 0;
 
         default:
             return -ENOTTY;
